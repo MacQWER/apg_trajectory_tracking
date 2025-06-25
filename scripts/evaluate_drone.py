@@ -25,7 +25,8 @@ except ModuleNotFoundError:
 ROLL_OUT = 1
 
 # Use cuda if available
-device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class QuadEvaluator():
@@ -331,7 +332,7 @@ def load_model(model_path, epoch=""):
     param_dict["self_play"] = 0
     dataset = QuadDataset(1, **param_dict)
 
-    controller = NetworkWrapper(net, dataset, **param_dict)
+    controller = NetworkWrapper(net.to(device), dataset, **param_dict)
 
     return controller, param_dict
 

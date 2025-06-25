@@ -164,7 +164,7 @@ class FlightmareDynamics(Dynamics):
         force_expanded = torch.unsqueeze(force_torques[:, 0], 1)
         f_s = force_expanded.size()
         force = torch.cat(
-            (torch.zeros(f_s), torch.zeros(f_s), force_expanded), dim=1
+            (torch.zeros(f_s).to(self.device), torch.zeros(f_s).to(self.device), force_expanded), dim=1
         )
 
         acceleration = self.linear_dynamics(force, attitude, velocity)

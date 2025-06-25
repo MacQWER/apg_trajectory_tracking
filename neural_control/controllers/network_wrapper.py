@@ -4,6 +4,13 @@ import contextlib
 import time
 import torch.optim as optim
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+def to_device(data, device):
+    if isinstance(data, (list, tuple)):
+        return [to_device(x, device) for x in data]
+    return data.to(device)
+
 
 @contextlib.contextmanager
 def dummy_context():
@@ -51,6 +58,8 @@ class NetworkWrapper:
             current_np_state.copy(), ref_states, add_to_dataset=add_to_dataset
         )
 
+        in_state, current_state, ref = to_device([in_state, current_state, ref], device)
+
         with torch.no_grad():
             suggested_action = self.net(in_state, ref[:, :self.horizon])
 
@@ -61,7 +70,7 @@ class NetworkWrapper:
                     suggested_action, (1, self.horizon, self.action_dim)
                 )
 
-        numpy_action_seq = suggested_action[0].detach().numpy()
+        numpy_action_seq = suggested_action[0].detach().cpu().numpy()
         # print([round(a, 2) for a in numpy_action_seq[0]])
         # keep track of actions
         self.action_counter += 1

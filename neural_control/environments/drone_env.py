@@ -26,7 +26,8 @@ from neural_control.dynamics.quad_dynamics_flightmare import (
 from neural_control.dynamics.quad_dynamics_simple import SimpleDynamics
 from neural_control.trajectory.generate_trajectory import load_prepare_trajectory
 
-device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 class QuadRotorEnvBase(gym.Env):

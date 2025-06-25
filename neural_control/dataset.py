@@ -6,7 +6,8 @@ from neural_control.environments.wing_env import sample_training_data
 from neural_control.environments.cartpole_env import construct_states
 from neural_control.dynamics.quad_dynamics_base import Dynamics
 
-device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+# device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
 def raw_states_to_torch(

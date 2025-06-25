@@ -12,6 +12,9 @@ from neural_control.dynamics.quad_dynamics_simple import SimpleDynamics
 from neural_control.dynamics.quad_dynamics_flightmare import (
     FlightmareDynamics
 )
+from neural_control.dynamics.quad_dynamics_mujoco import (
+    FlightmareDynamicsMujoco
+)
 from neural_control.dynamics.quad_dynamics_trained import LearntDynamics
 from neural_control.controllers.network_wrapper import NetworkWrapper
 from neural_control.environments.drone_env import QuadRotorEnvBase
@@ -22,6 +25,8 @@ try:
     from neural_control.flightmare import FlightmareWrapper
 except ModuleNotFoundError:
     pass
+
+from Util import quad_loss
 
 
 class TrainDrone(TrainBase):
@@ -50,6 +55,7 @@ class TrainDrone(TrainBase):
         
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print("Using device:", self.device)
+        print("sample_in:", self.sample_in)
 
     def initialize_model(
         self,
@@ -160,12 +166,17 @@ class TrainDrone(TrainBase):
             )
             intermediate_states[:, k] = current_state
 
-        loss = quad_mpc_loss(
+        # loss = quad_mpc_loss(
+        #     intermediate_states,
+        #     # RNN:
+        #     ref_states[:, :self.horizon],
+        #     action_seq,
+        #     printout=0
+        # )
+        loss = quad_loss(
             intermediate_states,
-            # RNN:
             ref_states[:, :self.horizon],
-            action_seq,
-            printout=0
+            action_seq
         )
 
         # Backprop
@@ -193,8 +204,13 @@ class TrainDrone(TrainBase):
             )
             intermediate_states[:, k] = current_state
 
-        loss = quad_mpc_loss(
-            intermediate_states, ref_states, action_seq, printout=0
+        # loss = quad_mpc_loss(
+        #     intermediate_states, ref_states, action_seq, printout=0
+        # )
+        loss = quad_loss(
+            intermediate_states,
+            ref_states,
+            action_seq
         )
 
         # Backprop
@@ -249,8 +265,8 @@ def train_control(base_model, config):
     modified_params = config["modified_params"]
     # TODO: might be problematic
     print(modified_params)
-    train_dynamics = FlightmareDynamics(modified_params=modified_params)
-    eval_dynamics = FlightmareDynamics(modified_params=modified_params)
+    train_dynamics = FlightmareDynamicsMujoco(modified_params=modified_params)
+    eval_dynamics = FlightmareDynamicsMujoco(modified_params=modified_params)
 
     # make sure that also the self play samples are collected in same env
     config["sample_in"] = "train_env"
@@ -273,7 +289,7 @@ def train_dynamics(base_model, config):
 
     # train environment is learnt
     train_dynamics = LearntDynamics()
-    eval_dynamics = FlightmareDynamics(modified_params)
+    eval_dynamics = FlightmareDynamicsMujoco(modified_params)
 
     trainer = TrainDrone(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
@@ -293,8 +309,8 @@ def train_sampling_finetune(base_model, config):
     config["sample_in"] = "eval_env"
 
     # train environment is learnt
-    train_dynamics = FlightmareDynamics()
-    eval_dynamics = FlightmareDynamics(modified_params=modified_params)
+    train_dynamics = FlightmareDynamicsMujoco()
+    eval_dynamics = FlightmareDynamicsMujoco(modified_params=modified_params)
 
     trainer = TrainDrone(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
@@ -305,7 +321,7 @@ def train_sampling_finetune(base_model, config):
 
 if __name__ == "__main__":
     # LOAD CONFIG
-    with open("configs/quad_config.json", "r") as infile:
+    with open("configs/quad_mj_config.json", "r") as infile:
         config = json.load(infile)
 
     # mod_params = {"mass": 1}
@@ -321,9 +337,7 @@ if __name__ == "__main__":
     config["nr_epochs"] = 400
 
     # TRAIN
-    start = time.time()
     train_control(baseline_model, config)
-    print("Training time:", time.time() - start)
     # train_dynamics(baseline_model, config)
     # train_sampling_finetune(baseline_model, config)
     # FINE TUNING parameters:

@@ -2,11 +2,12 @@ import torch
 import numpy as np
 from neural_control.plotting import print_state_ref_div
 from neural_control.dynamics.cartpole_dynamics import CartpoleDynamics
-device = "cpu"
+# device = "cpu"
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 torch.autograd.set_detect_anomaly(True)
 zero_tensor = torch.zeros(3).to(device)
 
-rates_prior = torch.tensor([.5, .5, .5])
+rates_prior = torch.tensor([.5, .5, .5]).to(device)
 
 
 def quad_mpc_loss(states, ref_states, action_seq, printout=0):

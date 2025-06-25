@@ -23,7 +23,9 @@ class Dynamics:
         # update with modified parameters
         self.cfg.update(modified_params)
 
-        device = "cpu"
+        # device = "cpu"
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = device
         # NUMPY PARAMETERS
         self.mass = self.cfg["mass"]
         self.arm_length = self.cfg["arm_length"]
@@ -40,15 +42,15 @@ class Dynamics:
         self.torch_translational_drag = torch.tensor(
             self.cfg["translational_drag"]
         ).float().to(device)
-        self.torch_gravity = torch.tensor(self.cfg["gravity"])
+        self.torch_gravity = torch.tensor(self.cfg["gravity"]).to(device).float()
         self.torch_rotational_drag = torch.tensor(self.cfg["rotational_drag"]
-                                                  ).float()
+                                                  ).float().to(device)
         self.torch_inertia_vector = torch.from_numpy(self.inertia_vector
                                                      ).float().to(device)
 
         self.torch_inertia_J = torch.diag(self.torch_inertia_vector)
         self.torch_inertia_J_inv = torch.diag(1 / self.torch_inertia_vector)
-        self.torch_kinv_vector = torch.tensor(self.kinv_ang_vel_tau).float()
+        self.torch_kinv_vector = torch.tensor(self.kinv_ang_vel_tau).float().to(device)
         self.torch_kinv_ang_vel_tau = torch.diag(self.torch_kinv_vector)
 
         # CASADI PARAMETERS
@@ -103,8 +105,8 @@ class Dynamics:
         Cr = torch.cos(roll)
         Sr = torch.sin(roll)
 
-        zero_vec_bs = torch.zeros(Sp.size())
-        ones_vec_bs = torch.ones(Sp.size())
+        zero_vec_bs = torch.zeros(Sp.size()).to(attitude.device)
+        ones_vec_bs = torch.ones(Sp.size()).to(attitude.device)
 
         # create matrix
         m1 = torch.transpose(
@@ -121,7 +123,7 @@ class Dynamics:
     def euler_rate(attitude, angular_velocity):
         euler_matrix = Dynamics.to_euler_matrix(attitude)
         together = torch.matmul(
-            euler_matrix, torch.unsqueeze(angular_velocity.float(), 2)
+            euler_matrix, torch.unsqueeze(angular_velocity.float(), 2).to(euler_matrix.device)
         )
         # print("output euler rate", together.size())
         return torch.squeeze(together)
