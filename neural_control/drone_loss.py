@@ -103,76 +103,76 @@ def fixed_wing_last_loss(drone_states, linear_reference, action, printout=0):
     return loss
 
 
-def cartpole_loss(action, state, lambda_factor=.4, printout=0):
+# def cartpole_loss(action, state, lambda_factor=.4, printout=0):
 
-    # bring action into -1 1 range
-    action = torch.sigmoid(action) - .5
+#     # bring action into -1 1 range
+#     action = torch.sigmoid(action) - .5
 
-    horizon = action.size()[1]
+#     horizon = action.size()[1]
 
-    # update state iteratively for each proposed action
-    for i in range(horizon):
-        state = simulate_cartpole(state, action[:, i])
-    abs_state = torch.abs(state)
+#     # update state iteratively for each proposed action
+#     for i in range(horizon):
+#         state = simulate_cartpole(state, action[:, i])
+#     abs_state = torch.abs(state)
 
-    pos_loss = state[:, 0]**2
-    # velocity losss is low when x is high
-    vel_loss = abs_state[:, 1] * (2.4 - abs_state[:, 0])**2
-    angle_loss = 3 * abs_state[:, 2]
-    # high angle velocity is fine if angle itself is high
-    angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
-    loss = .1 * (pos_loss + vel_loss + angle_loss + angle_vel_loss)
+#     pos_loss = state[:, 0]**2
+#     # velocity losss is low when x is high
+#     vel_loss = abs_state[:, 1] * (2.4 - abs_state[:, 0])**2
+#     angle_loss = 3 * abs_state[:, 2]
+#     # high angle velocity is fine if angle itself is high
+#     angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
+#     loss = .1 * (pos_loss + vel_loss + angle_loss + angle_vel_loss)
 
-    if printout:
-        print("position_loss", pos_loss[0].item())
-        print("vel_loss", vel_loss[0].item())
-        # print("factor", factor[0].item())
-        print("angle loss", angle_loss[0].item())
-        print("angle vel", angle_vel_loss[0].item())
-        print()
-    # print(fail)
-    return torch.sum(loss)  # + angle_acc)
-
-
-mpc_losses = torch.tensor([0, 3, 10, 1])
+#     if printout:
+#         print("position_loss", pos_loss[0].item())
+#         print("vel_loss", vel_loss[0].item())
+#         # print("factor", factor[0].item())
+#         print("angle loss", angle_loss[0].item())
+#         print("angle vel", angle_vel_loss[0].item())
+#         print()
+#     # print(fail)
+#     return torch.sum(loss)  # + angle_acc)
 
 
-def cartpole_loss_mpc(states, ref_states, actions):
-    loss = (states - ref_states)**2 * mpc_losses
-    loss_actions = torch.sum(actions**2)
-    # angle_loss = (states[:, :, 2] - ref_states[:, :, 2])**2
-    # angle_vel_loss = (states[:, :, 3] - ref_states[:, :, 3])**2
-    # loss = 10 * angle_loss + angle_vel_loss
-    return torch.sum(loss) + 0.01 * loss_actions
+# mpc_losses = torch.tensor([0, 3, 10, 1])
 
 
-def cartpole_loss_balance(state):
-    abs_state = torch.abs(state)
-    angle_loss = 3 * abs_state[:, 2]
-    # high angle velocity is fine if angle itself is high
-    angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
-    loss = .1 * (angle_loss + angle_vel_loss)
-    return torch.sum(loss)
+# def cartpole_loss_mpc(states, ref_states, actions):
+#     loss = (states - ref_states)**2 * mpc_losses
+#     loss_actions = torch.sum(actions**2)
+#     # angle_loss = (states[:, :, 2] - ref_states[:, :, 2])**2
+#     # angle_vel_loss = (states[:, :, 3] - ref_states[:, :, 3])**2
+#     # loss = 10 * angle_loss + angle_vel_loss
+#     return torch.sum(loss) + 0.01 * loss_actions
 
 
-def cartpole_loss_swingup(state, lambda_factor=.4, printout=0):
+# def cartpole_loss_balance(state):
+#     abs_state = torch.abs(state)
+#     angle_loss = 3 * abs_state[:, 2]
+#     # high angle velocity is fine if angle itself is high
+#     angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
+#     loss = .1 * (angle_loss + angle_vel_loss)
+#     return torch.sum(loss)
 
-    abs_state = torch.abs(state)
 
-    pos_loss = state[:, 0]**2
-    # velocity losss is low when x is high
-    vel_loss = abs_state[:, 1] * (2.4 - abs_state[:, 0])**2
-    angle_loss = 3 * abs_state[:, 2]
-    # high angle velocity is fine if angle itself is high
-    angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
-    loss = .1 * (pos_loss + vel_loss + angle_loss + angle_vel_loss)
+# def cartpole_loss_swingup(state, lambda_factor=.4, printout=0):
 
-    if printout:
-        print("position_loss", pos_loss[0].item())
-        print("vel_loss", vel_loss[0].item())
-        # print("factor", factor[0].item())
-        print("angle loss", angle_loss[0].item())
-        print("angle vel", angle_vel_loss[0].item())
-        print()
-    # print(fail)
-    return torch.sum(loss)  # + angle_acc)
+#     abs_state = torch.abs(state)
+
+#     pos_loss = state[:, 0]**2
+#     # velocity losss is low when x is high
+#     vel_loss = abs_state[:, 1] * (2.4 - abs_state[:, 0])**2
+#     angle_loss = 3 * abs_state[:, 2]
+#     # high angle velocity is fine if angle itself is high
+#     angle_vel_loss = .1 * abs_state[:, 3] * (torch.pi - abs_state[:, 2])**2
+#     loss = .1 * (pos_loss + vel_loss + angle_loss + angle_vel_loss)
+
+#     if printout:
+#         print("position_loss", pos_loss[0].item())
+#         print("vel_loss", vel_loss[0].item())
+#         # print("factor", factor[0].item())
+#         print("angle loss", angle_loss[0].item())
+#         print("angle vel", angle_vel_loss[0].item())
+#         print()
+#     # print(fail)
+#     return torch.sum(loss)  # + angle_acc)
