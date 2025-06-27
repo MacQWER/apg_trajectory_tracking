@@ -66,16 +66,8 @@ class MjStepFunction_euler(torch.autograd.Function):
     def forward(ctx, state_tensor, action_tensor, robot):
         # print("type of state_tensor:", type(state_tensor))
         device = action_tensor.device
-        if state_tensor.device.type != "cpu":
-            state = state_tensor.cpu()
-        if action_tensor.device.type != "cpu":
-            action = action_tensor.cpu()
-        if state_tensor.shape[0] == 1:
-            state = state_tensor.squeeze(0)
-        if action.shape[0] == 1:
-            action = action.squeeze(0)
-        state = state.numpy()
-        action = action.numpy()
+        state = state_tensor.cpu().squeeze(0).numpy()
+        action = action_tensor.cpu().squeeze(0).numpy()
 
         state_quat = np.zeros(robot.model.nq + robot.model.nv, dtype=np.float64)
         state_quat[:3] = state[:3]
@@ -188,8 +180,8 @@ def run_simulation(simulation_duration=60.0, control_decimation=20):
             step_start = time.time()
             
             if counter % control_decimation == 0:
-                    action_tensor = torch.zeros(action_dim, dtype=torch.double, device=device)
-                    # action_tensor = torch.tensor([[3.2495625, 3.2495625, 3.2495625, 3.2495625]], dtype=torch.double, device=device)
+                    # action_tensor = torch.zeros(action_dim, dtype=torch.double, device=device)
+                    action_tensor = torch.tensor([0.723 * 9.81, 0., 0., 0.], dtype=torch.double, device=device)
             counter += 1
             
             start_time = time.time()
