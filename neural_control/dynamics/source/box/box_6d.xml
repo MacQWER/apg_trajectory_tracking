@@ -1,0 +1,39 @@
+<mujoco model="box_6d">
+    <compiler angle="degree" />
+    <option timestep="0.001" gravity="0 0 -9.81" viscosity="0.02"/>
+
+    <asset>
+        <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="3072"/>
+        <texture type="2d" name="groundplane" builtin="checker" mark="edge" rgb1="0.2 0.3 0.4" rgb2="0.1 0.2 0.3"
+            markrgb="0.8 0.8 0.8" width="300" height="300"/>
+        <material name="groundplane" texture="groundplane" texuniform="true" texrepeat="5 5" reflectance="0.2"/>
+    </asset>
+
+    <worldbody>
+        <light pos="0 0 10" dir="0 0 -1" directional="true"/>
+        <geom name="ground" type="plane" pos="0 0 0" size="0 0 0.1" material="groundplane" friction="1 0.005 0.0001"/>
+
+        <body name="box" pos="0 0 0.5">
+            <inertial pos="0 0 0" mass="0.723" diaginertia="4.5 4.5 7.0"/>
+            <geom name="body_geom" type="box" size="0.1 0.1 0.1" rgba="0.2 0.6 0.3 1" friction="0.8 0.1 0.1"/>
+            <joint name="free_joint" type="free" damping="0.1"/>
+            <site name="box_center" pos="0 0 0" size="0.01" rgba="0 1 0 1"/>
+        </body>
+    </worldbody>
+
+    <sensor>
+        <framepos     name="box_framepos"     objtype="body" objname="box" />
+        <framequat    name="box_framequat"    objtype="body" objname="box" />
+        <framelinvel  name="box_framelinvel"  objtype="body" objname="box" />
+        <frameangvel  name="box_frameangvel"  objtype="body" objname="box" />
+    </sensor>
+
+    <actuator>
+        <!-- <motor name="force_x"  joint="free_joint" gear="1 0 0 0 0 0" ctrlrange="-20 20"/> -->
+        <!-- <motor name="force_y"  joint="free_joint" gear="0 1 0 0 0 0" ctrlrange="-20 20"/> -->
+        <motor name="force_z"  joint="free_joint" gear="0 0 1 0 0 0" ctrlrange="-20 20"/>
+        <motor name="torque_x" joint="free_joint" gear="0 0 0 1 0 0" ctrlrange="-20 20"/>
+        <motor name="torque_y" joint="free_joint" gear="0 0 0 0 1 0" ctrlrange="-20 20"/>
+        <motor name="torque_z" joint="free_joint" gear="0 0 0 0 0 1" ctrlrange="-20 20"/>
+    </actuator>
+</mujoco>
