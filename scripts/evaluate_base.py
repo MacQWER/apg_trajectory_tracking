@@ -4,7 +4,6 @@ import numpy as np
 import torch
 
 from neural_control.plotting import plot_success
-from neural_control.dynamics.fixed_wing_dynamics import FixedWingDynamics
 from neural_control.dynamics.quad_dynamics_flightmare import FlightmareDynamics
 
 
@@ -96,14 +95,9 @@ def run_mpc_analysis(
             modified_params = {key: new_val}
             print("\n ", round(inc, 2), "modified:", modified_params)
 
-            if system == "fixed_wing":
-                evaluator.eval_env.dynamics = FixedWingDynamics(
-                    modified_params=modified_params
-                )
-            elif system == "quad":
-                evaluator.eval_env.dynamics = FlightmareDynamics(
-                    modified_params=modified_params
-                )
+            evaluator.eval_env.dynamics = FlightmareDynamics(
+                modified_params=modified_params
+            )
 
             mean_dist, std_dist = evaluator.run_eval(nr_test=20)
             mean_list.append(mean_dist)

@@ -1,5 +1,4 @@
 import numpy as np
-from neural_control.environments.cartpole_rendering import LineStyle
 from neural_control.environments.helper_simple_env import Euler
 from mpl_toolkits.mplot3d import axes3d
 import numpy as np

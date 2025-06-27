@@ -10,9 +10,6 @@ from neural_control.dynamics.quad_dynamics_flightmare import (
     FlightmareDynamicsMPC
 )
 from neural_control.dynamics.quad_dynamics_simple import SimpleDynamicsMPC
-from neural_control.dynamics.fixed_wing_2D import fixed_wing_dynamics_mpc
-from neural_control.dynamics.fixed_wing_dynamics import FixedWingDynamicsMPC
-from neural_control.dynamics.cartpole_dynamics import CartpoleDynamicsMPC
 
 
 class MPC(object):
@@ -162,14 +159,7 @@ class MPC(object):
         elif self.dynamics_model == "flightmare":
             dyn = FlightmareDynamicsMPC()
             F = dyn.drone_dynamics_flightmare(self._dt)
-        elif self.dynamics_model == "fixed_wing_2D":
-            F = fixed_wing_dynamics_mpc(self._dt)
-        elif self.dynamics_model == "fixed_wing_3D":
-            dyn = FixedWingDynamicsMPC()
-            F = dyn.simulate_fixed_wing(self._dt)
-        elif self.dynamics_model == "cartpole":
-            dyn = CartpoleDynamicsMPC()
-            F = dyn.simulate_cartpole(self._dt)
+        
         fMap = F.map(self._N, "openmp")  # parallel
 
         # # # # # # # # # # # # # # #

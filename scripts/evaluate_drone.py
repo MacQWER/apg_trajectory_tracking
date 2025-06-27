@@ -276,6 +276,10 @@ class QuadEvaluator():
         ratio_stable = np.sum(stable == max_steps_stable) / len(stable)
         # get tracking error only for the runs that were completed
         div_of_full_runs = div[stable == max_steps_stable]
+        avg_full = np.mean(div_of_full_runs) if len(div_of_full_runs) > 0 else np.nan
+        std_full = np.std(div_of_full_runs) if len(div_of_full_runs) > 0 else np.nan
+        overall_avg = np.mean(div) if div.size > 0 else np.nan
+        overall_std = np.std(div) if div.size > 0 else np.nan
         print(
             "Average tracking error: %3.2f (%3.2f)" %
             (np.mean(div), np.std(div))
@@ -283,7 +287,7 @@ class QuadEvaluator():
         if 0 < ratio_stable < 1:
             print(
                 "Average error of full runs: %3.2f (%3.2f)" %
-                (np.mean(div_of_full_runs), np.std(div_of_full_runs))
+                (avg_full, std_full)
             )
         print(
             "Ratio of stable runs: %3.2f" % (ratio_stable)
@@ -291,13 +295,13 @@ class QuadEvaluator():
 
         if return_dict:
             return {
-                "avg_tracking_error": np.mean(div_of_full_runs),
-                "std_tracking_error": np.std(div_of_full_runs),
+                "avg_tracking_error": avg_full,
+                "std_tracking_error": std_full,
                 "ratio_stable": ratio_stable
             }
-        return np.mean(stable), np.std(stable), np.mean(
-            div_of_full_runs
-        ), np.std(div_of_full_runs), np.mean(div), np.std(div)
+        return  np.mean(stable) if stable.size > 0 else np.nan, \
+                np.std(stable) if stable.size > 0 else np.nan, \
+                avg_full, std_full, overall_avg, overall_std
 
     def collect_training_data(self, outpath="data/jan_2021.npy"):
         """
