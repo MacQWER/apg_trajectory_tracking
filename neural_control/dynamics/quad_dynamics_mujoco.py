@@ -4,6 +4,7 @@ import numpy as np
 import mujoco
 from wrapper import SimpleRobot, mj_forward_euler_batched
 from neural_control.dynamics.quad_dynamics_base import Dynamics
+import time
 
 class FlightmareDynamicsMujoco(Dynamics):
 
@@ -19,11 +20,11 @@ class FlightmareDynamicsMujoco(Dynamics):
         
 
     def __call__(self, state, action, dt):
+        # start_time = time.time()
         step_num = int(dt / self.model.opt.timestep)
         if step_num < 1:
             raise ValueError("dt must be greater than or equal to the model timestep.")
         else:
-            action = torch.sigmoid(action) * (self.u_high - self.u_low) + self.u_low
             action.to(self.device)
             state_next, sensordata_next = mj_forward_euler_batched(
                 state, action, self.model
@@ -32,6 +33,7 @@ class FlightmareDynamicsMujoco(Dynamics):
                 state_next, sensordata_next = mj_forward_euler_batched(
                     state_next, action, self.model
                 )
+            # print(f"FlightmareDynamicsMujoco step time: {time.time() - start_time:.6f} seconds")
             return state_next
         
         

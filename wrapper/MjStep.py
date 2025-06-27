@@ -5,6 +5,27 @@ import mujoco
 import multiprocessing
 from Util import euler_xyz_to_quaternion, quaternion_to_euler_xyz_safe_tensor
 
+# ==== 全局变量，用于持久化 pool 与 model ====
+_global_pool = None
+_global_model = None
+
+# 子进程内部的 robot 缓存
+_worker_robot = None
+
+def _init_worker(model):
+    """
+    Pool initializer：在子进程中运行一次，将 model 构建到全局 _worker_robot
+    """
+    global _worker_robot
+    _worker_robot = SimpleRobot(model)
+
+def _step_worker_cached(args):
+    """
+    子进程真正调用的 worker：直接用缓存的 _worker_robot
+    """
+    state, action = args
+    return _worker_robot.step(state, action)
+
 
 class SimpleRobot:
     def __init__(self, model):
@@ -41,9 +62,29 @@ def _step_worker(args):
 class MjStepFunctionEulerBatched(torch.autograd.Function):
     @staticmethod
     def forward(ctx, state_tensor, action_tensor, model):
+        global _global_pool, _global_model
         # state_tensor: (B, state_dim), action_tensor: (B, action_dim)
         B = state_tensor.shape[0]
         device = action_tensor.device
+        # 首次调用时，设置启动方法 & 创建持久化进程池
+        if _global_pool is None or _global_model is not model:
+            # 确保使用 forkserver（支持在子进程继承父进程已构建对象）
+            try:
+                multiprocessing.set_start_method("forkserver", force=True)
+            except RuntimeError:
+                pass
+            # 如已有旧 pool，先关闭
+            if _global_pool is not None:
+                _global_pool.close()
+                _global_pool.join()
+
+            _global_model = model
+            _global_pool = multiprocessing.Pool(
+                processes=min(multiprocessing.cpu_count(), B),
+                initializer=_init_worker,
+                initargs=(model,)
+            )
+
         # 转 numpy
         states_np = state_tensor.detach().cpu().double().numpy()
         state_quats = np.zeros((B, model.nq + model.nv), dtype=np.float64)
@@ -54,10 +95,9 @@ class MjStepFunctionEulerBatched(torch.autograd.Function):
         # action_tensor = torch.sigmoid(action_tensor) * 13.0  # 确保 action 在 [0, 13] 范围内
         actions_np = action_tensor.detach().cpu().double().numpy()
 
-        # 多进程并行
-        args_list = [(model, state_quats[i], actions_np[i].squeeze()) for i in range(B)]
-        with multiprocessing.Pool(processes=min(B, multiprocessing.cpu_count())) as pool:
-            results = pool.map(_step_worker, args_list)
+        # 并行调用
+        args_list = [(state_quats[i], actions_np[i].squeeze()) for i in range(B)]
+        results = _global_pool.map(_step_worker_cached, args_list)
 
         # 解包结果
         st_next_list, sens_list, jac_x_list, jac_u_list, s_jac_x_list, s_jac_u_list = zip(*results)

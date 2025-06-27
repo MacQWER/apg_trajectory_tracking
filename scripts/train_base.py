@@ -200,7 +200,7 @@ class TrainBase:
                 )
             else:
                 actions = self.net(in_state, in_ref_state)
-                actions = torch.sigmoid(actions)
+                # actions = torch.sigmoid(actions)
                 action_seq = torch.reshape(
                     actions, (-1, self.horizon, self.action_dim)
                 )

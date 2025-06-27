@@ -16,10 +16,10 @@ from neural_control.dynamics.quad_dynamics_mujoco import (
     FlightmareDynamicsMujoco
 )
 from neural_control.dynamics.quad_dynamics_trained import LearntDynamics
-from neural_control.controllers.network_wrapper import NetworkWrapper
+from neural_control.controllers.network_wrapper import DroneMJNetworkWrapper
 from neural_control.environments.drone_env import QuadRotorEnvBase
 from evaluate_drone import QuadEvaluator
-from neural_control.models.hutter_model import Net
+from neural_control.models.hutter_model import Net_limit
 from neural_control.models.rnn import LSTM_NEW
 try:
     from neural_control.flightmare import FlightmareWrapper
@@ -87,12 +87,14 @@ class TrainDrone(TrainBase):
             )
             in_state_size = self.state_data.normed_states.size()[1]
 
-            net_class = LSTM_NEW if self.train_mode == "LSTM" else Net
+            net_class = LSTM_NEW if self.train_mode == "LSTM" else Net_limit
             self.net = net_class(
                 in_state_size,
                 self.horizon,
                 self.ref_dim,
                 self.actions_out_dim,
+                self.train_dynamics.u_low,
+                self.train_dynamics.u_high,
                 conv=1
             )
             self.net.to(self.device)
@@ -224,17 +226,18 @@ class TrainDrone(TrainBase):
 
     def evaluate_model(self, epoch):
         # EVALUATE
-        controller = NetworkWrapper(self.net, self.state_data, **self.config)
+        controller = DroneMJNetworkWrapper(self.net, self.state_data, **self.config)
 
         evaluator = QuadEvaluator(controller, self.eval_env, **self.config)
         # run with mpc to collect data
         # eval_env.run_mpc_ref("rand", nr_test=5, max_steps=500)
         # run without mpc for evaluation
+        print("Evaluate model at epoch", epoch)
         with torch.no_grad():
             suc_mean, suc_std, div_full_mean, div_full_std, div_mean, div_std = evaluator.run_eval(
                 "rand", nr_test=10, **self.config
             )
-
+        print("here")
         self.sample_new_data(epoch)
 
         # increase threshold
@@ -337,7 +340,9 @@ if __name__ == "__main__":
     config["nr_epochs"] = 400
 
     # TRAIN
+    start_time = time.time()
     train_control(baseline_model, config)
+    print("Training time:", time.time() - start_time)
     # train_dynamics(baseline_model, config)
     # train_sampling_finetune(baseline_model, config)
     # FINE TUNING parameters:

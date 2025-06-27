@@ -1,7 +1,7 @@
 <mujoco model="Skydio X2">
   <compiler autolimits="true" assetdir="assets"/>
 
-  <option timestep="0.01" density="1.225" viscosity="1.8e-5"/>
+  <option timestep="0.02" density="1.225" viscosity="1.8e-5"/>
 
   <default>
     <default class="x2">
