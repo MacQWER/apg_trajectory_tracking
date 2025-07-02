@@ -11,101 +11,6 @@ import time
 
 from neural_control.drone_loss import quad_mpc_loss
 
-def compare_gradient_difference(box_dynamics, test_dyn, horizon=10, dt=0.1, device="cpu"):
-    B = 1
-    state_dim = 12
-    act_dim = 4
-
-    # 初始状态
-    init_state = torch.zeros(B, state_dim, dtype=torch.float32, device=device)
-    init_state[:, 2] = 0.3  # 初始 z 高度
-
-    # 给一个合理参考轨迹（比如保持 hover）
-    ref_states = torch.zeros(horizon, B, state_dim, device=device)
-    ref_states[..., 2] = 0.3  # 保持高度不变
-
-    # action_seq 初始化，requires_grad
-    # action_seq_box = torch.full((horizon, B, act_dim), 0.5, requires_grad=True, device=device)
-    t = torch.arange(horizon, device=device)
-    sin_wave = 0.5 + 0.4 * torch.sin(2 * 3.1415 * t / horizon)
-    action_seq_box = sin_wave.view(horizon, 1, 1).repeat(1, B, act_dim)
-    action_seq_box = action_seq_box + 0.05 * torch.randn(horizon, B, act_dim, device=device)
-    action_seq_box = action_seq_box.clamp(0, 1).requires_grad_()
-    action_seq_flight = action_seq_box.clone().detach().requires_grad_()
-
-    # simulate box_dynamics
-    states_box = [init_state]
-    state = init_state.clone()
-    for t in range(horizon):
-        action = action_seq_box[t]
-        state = box_dynamics(state.double(), action.double(), dt).float()
-        states_box.append(state)
-    states_box = torch.stack(states_box[1:], dim=0)
-
-    # simulate flightmare
-    states_flight = [init_state]
-    state = init_state.clone()
-    for t in range(horizon):
-        action = action_seq_flight[t]
-        state = test_dyn(state, action, dt)
-        states_flight.append(state)
-    states_flight = torch.stack(states_flight[1:], dim=0)
-
-    # compute losses
-    loss_box = quad_mpc_loss(states_box, ref_states, action_seq_box)
-    loss_flight = quad_mpc_loss(states_flight, ref_states, action_seq_flight)
-
-    # backward
-    loss_box.backward()
-    grad_box = action_seq_box.grad.clone()
-
-    loss_flight.backward()
-    grad_flight = action_seq_flight.grad.clone()
-
-    # compare
-    grad_diff = torch.norm(grad_box - grad_flight).item()
-    state_diff = torch.norm(states_box - states_flight).item()
-    print(f"Gradient L2 difference: {grad_diff:.6f}")
-    print(f"State L2 difference: {state_diff:.6f}")
-    return grad_box, grad_flight
-
-def pd_omega_control_per_axis_batch(omega, omega_cmd, J, Kp, Kd):
-    """
-    Batched PD angular velocity controller.
-
-    :param omega:      (B, 3) current angular velocity
-    :param omega_cmd:  (B, 3) desired angular velocity
-    :param J:          (3,) or (B, 3) inertia (diagonal)
-    :param Kp:         (3,) or (B, 3) proportional gain
-    :param Kd:         (3,) or (B, 3) derivative gain
-    :return:           (B, 3) torque for each sample
-    """
-    # Ensure shape
-    # omega = torch.as_tensor(omega, dtype=torch.float32)
-    # omega_cmd = torch.as_tensor(omega_cmd, dtype=torch.float32)
-
-    # Broadcast J, Kp, Kd to (B, 3) if necessary
-    B = omega.shape[0]
-    J = torch.as_tensor(J, dtype=torch.float32)
-    if J.ndim == 1:
-        J = J.unsqueeze(0).repeat(B, 1)
-    Kp = torch.as_tensor(Kp, dtype=torch.float32)
-    if Kp.ndim == 1:
-        Kp = Kp.unsqueeze(0).repeat(B, 1)
-    Kd = torch.as_tensor(Kd, dtype=torch.float32)
-    if Kd.ndim == 1:
-        Kd = Kd.unsqueeze(0).repeat(B, 1)
-
-    # PD control
-    omega_error = omega_cmd - omega
-    omega_dot_cmd = Kp * omega_error - Kd * omega
-
-    J_omega = J * omega
-    cross = torch.cross(omega, J_omega, dim=1)
-
-    torque = J * omega_dot_cmd + cross
-    return torque
-
 
 class BoxDynamics(Dynamics):
 
@@ -119,6 +24,9 @@ class BoxDynamics(Dynamics):
         self.model = mujoco.MjModel.from_xml_path(BOX_XML_PATH)
         self.data = mujoco.MjData(self.model)
         self.robot = SimpleRobot(self.model, self.data)
+
+        self.kp = torch.tensor([16.6, 16.6, 5.0])
+        self.kd = torch.tensor([0.0, 0.0, 0.0])
         
     def __call__(self, state_tensor, action_tensor, dt):
         """
@@ -157,12 +65,12 @@ class BoxDynamics(Dynamics):
         for _ in range(step_num):
             force = torch.zeros_like(action_tensor_current)
             force[:,0] = action_tensor_current[:,0] * box_mass
-            force[:,1:] = pd_omega_control_per_axis_batch(
+            force[:,1:] = self.pd_omega_control_per_axis_batch(
                 state_tensor_current[:, 9:12],  # omega
                 action_tensor_current[:, 1:],  # omega_cmd
                 torch.tensor(box_inertia_diag, device=action_tensor_current.device),  # J
-                torch.tensor([16.6, 16.6, 5.0], device=action_tensor_current.device),  # Kp
-                torch.tensor([0.0, 0.0, 0.0], device=action_tensor_current.device)   # Kd
+                self.kp.to(action_tensor_current.device),  # Kp
+                self.kd.to(action_tensor_current.device)   # Kd
             ).to(action_tensor_current.device)
             state_tensor_current, sensor_tensor = mj_forward_euler_wrapper(
                 state_tensor_current, force, self.robot
@@ -171,6 +79,43 @@ class BoxDynamics(Dynamics):
             # For a constant action over dt, this is fine.
 
         return state_tensor_current
+    
+    def pd_omega_control_per_axis_batch(self, omega, omega_cmd, J, Kp, Kd):
+        """
+        Batched PD angular velocity controller.
+
+        :param omega:      (B, 3) current angular velocity
+        :param omega_cmd:  (B, 3) desired angular velocity
+        :param J:          (3,) or (B, 3) inertia (diagonal)
+        :param Kp:         (3,) or (B, 3) proportional gain
+        :param Kd:         (3,) or (B, 3) derivative gain
+        :return:           (B, 3) torque for each sample
+        """
+        # Ensure shape
+        # omega = torch.as_tensor(omega, dtype=torch.float32)
+        # omega_cmd = torch.as_tensor(omega_cmd, dtype=torch.float32)
+
+        # Broadcast J, Kp, Kd to (B, 3) if necessary
+        B = omega.shape[0]
+        J = torch.as_tensor(J, dtype=torch.float32)
+        if J.ndim == 1:
+            J = J.unsqueeze(0).repeat(B, 1)
+        Kp = torch.as_tensor(Kp, dtype=torch.float32)
+        if Kp.ndim == 1:
+            Kp = Kp.unsqueeze(0).repeat(B, 1)
+        Kd = torch.as_tensor(Kd, dtype=torch.float32)
+        if Kd.ndim == 1:
+            Kd = Kd.unsqueeze(0).repeat(B, 1)
+
+        # PD control
+        omega_error = omega_cmd - omega
+        omega_dot_cmd = Kp * omega_error - Kd * omega
+
+        J_omega = J * omega
+        cross = torch.cross(omega, J_omega, dim=1)
+
+        torque = J * omega_dot_cmd + cross
+        return torque
 
 
 
@@ -189,10 +134,6 @@ if __name__ == "__main__":
 
     test_dyn = FlightmareDynamics()
 
-    grad_box, grad_flight = compare_gradient_difference(box_dynamics, test_dyn)
-    print("Box Dynamics Gradient: \n", grad_box)
-    print("Flightmare Dynamics Gradient: \n", grad_flight)
-
     with mujoco.viewer.launch_passive(box_dynamics.model, box_dynamics.data) as viewer:
         # viewer.user_scn.flags[mujoco.mjtRndFlag.mjRND_WIREFRAME] = 1
 
@@ -208,15 +149,14 @@ if __name__ == "__main__":
             
             start_time = time.time()
             next_state_tensor = box_dynamics(state_tensor, action_tensor, 0.1)
-            # next_state_tensor_test = test_dyn(state_tensor.float(), action_tensor.float(), 0.1)
-            # print("error: ", torch.norm(next_state_tensor - next_state_tensor_test))
-            # print("mujoco state: \n", next_state_tensor)
-            # print("flightmare state: \n", next_state_tensor_test)
-            # print("action: ", action_tensor)
-            # print()
+            next_state_tensor_test = test_dyn(state_tensor.float(), action_tensor.float(), 0.1)
+            print("error: ", torch.norm(next_state_tensor - next_state_tensor_test))
+            print("mujoco state: \n", next_state_tensor)
+            print("flightmare state: \n", next_state_tensor_test)
+            print()
 
             state_tensor = next_state_tensor
-            print("forward euler time: ", time.time() - start_time)
+            # print("forward euler time: ", time.time() - start_time)
             
             viewer.sync()
             
