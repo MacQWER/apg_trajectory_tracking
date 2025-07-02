@@ -29,18 +29,6 @@ ROLL_OUT = 1
 # Use cuda if available
 device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-def log_gradients(model, step):
-    total_norm = 0.0
-    for name, param in model.named_parameters():
-        if param.grad is not None:
-            param_norm = param.grad.data.norm(2)  # L2范数
-            print(f"Step {step} | Gradient norm for {name}: {param_norm:.4f}")
-            total_norm += param_norm.item() ** 2
-    total_norm = total_norm ** 0.5
-    print(f"Step {step} | Total gradient norm: {total_norm:.4f}")
-    return total_norm
-
-
 class BoxEvaluator():
 
     def __init__(
@@ -71,7 +59,7 @@ class BoxEvaluator():
         BOX_XML_PATH = os.path.join(CURRENT_DIR, '..', 'neural_control', 'dynamics', 'source', 'box', 'box_6d.xml')
         BOX_XML_PATH = os.path.normpath(BOX_XML_PATH)
         self.mj_model = mujoco.MjModel.from_xml_path(BOX_XML_PATH)
-        self.mj_data = mujoco.MjData(self.mj_model)
+        self.mj_data = mujoco.MjData(self.model)
 
         if hasattr(self.controller.net, "reset_hidden_state"):
             # if it's an lstm based model, reset the hidden state
