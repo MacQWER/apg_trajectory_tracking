@@ -2,7 +2,7 @@ import torch
 import numpy as np
 from neural_control.dynamics.quad_dynamics_base import Dynamics
 from neural_control.dynamics.quad_dynamics_flightmare import FlightmareDynamics
-from neural_control.dynamics.mj_dyn import SimpleRobot, mj_forward_euler_wrapper
+from neural_control.dynamics.mj_dyn import SimpleRobot, mj_forward_wrapper, rotvec_to_euler_tensor, euler_to_rotvec_tensor
 import casadi as ca
 import os
 import mujoco
@@ -24,61 +24,78 @@ class BoxDynamics(Dynamics):
         self.model = mujoco.MjModel.from_xml_path(BOX_XML_PATH)
         self.data = mujoco.MjData(self.model)
         self.robot = SimpleRobot(self.model, self.data)
+        if self.model.opt.timestep <= 0:
+            raise ValueError("Model timestep must be positive.")
 
         self.kp = torch.tensor([16.6, 16.6, 5.0])
         self.kd = torch.tensor([0.0, 0.0, 0.0])
+        box_id = self.model.body("box").id
+        self.box_mass = self.model.body_mass[box_id]
+        self.box_inertia_diag = self.model.body_inertia[box_id]
+
+        self.ROTVEC = True  # Set to True if the state IN DYNAMICS is in rotation vector format, False if in euler format
         
     def __call__(self, state_tensor, action_tensor, dt):
         """
         Performs multiple simulation steps using a forward Euler integration.
 
         Args:
-            state_tensor (torch.Tensor): The initial state tensor.
-            action_tensor (torch.Tensor): The action tensor to apply.
+            state_tensor (torch.Tensor): The initial state tensor, input and output is in euler format.
+            action_tensor (torch.Tensor): It is accelerate(0) and omega_cmd(1,2,3).
             dt (float): The total time duration for the simulation.
 
         Returns:
             tuple: A tuple containing the final state_tensor and sensor_tensor.
         """
-        # Ensure input tensors are not modified in place if they are used elsewhere
-        # .clone() is already a good practice.
-        state_tensor_current = state_tensor.clone() 
-        action_tensor_current = action_tensor.clone() # accelerate, omega_cmd
 
+        state_tensor_cpy = state_tensor.clone()
+        action_tensor_cpy = action_tensor.clone()
         # action is normalized between 0 and 1 --> rescale
-        box_id = self.model.body("box").id
-        box_mass = self.model.body_mass[box_id]
-        action_tensor_current[:,0] = action_tensor_current[:,0] * 15 - 7.5 + 9.81  # Scale thrust to be around 9.81 m/s^2
-        box_inertia_diag = self.model.body_inertia[box_id]
-        action_tensor_current[:,1:] = action_tensor_current[:,1:] - 0.5  # It is omega_cmd
-
-        # Calculate number of steps. Ensure it's at least 1 if dt > 0.
-        # Use a small epsilon to avoid floating point issues when dt is a multiple of timestep.
-        if self.model.opt.timestep <= 0:
-            raise ValueError("Model timestep must be positive.")
+        action_tensor_cpy[:,0] = action_tensor_cpy[:,0] * 15 - 7.5 + 9.81  # Scale thrust to be around 9.81 m/s^2
+        action_tensor_cpy[:,1:] = action_tensor_cpy[:,1:] - 0.5  # It is omega_cmd
         
         step_num = max(1, int(dt / self.model.opt.timestep + 1e-9)) # Add epsilon for robustness
 
         # Perform the simulation steps
         sensor_tensor = None  # Initialize sensor_tensor
 
+        force = torch.zeros_like(action_tensor_cpy)
+        force[:,0] = action_tensor_cpy[:,0] * self.box_mass
+        force[:,1:] = self.pd_omega_control_per_axis_batch(
+            state_tensor_cpy[:, 9:12],  # omega
+            action_tensor_cpy[:, 1:],  # omega_cmd
+            torch.tensor(self.box_inertia_diag, device=action_tensor_cpy.device),  # J
+            self.kp.to(action_tensor_cpy.device),  # Kp
+            self.kd.to(action_tensor_cpy.device)   # Kd
+        ).to(action_tensor_cpy.device)
+
+        # Convert euler angles to rotation vector
+        if self.ROTVEC:
+            # Convert euler angles to rotation vector
+            state_tensor_cpy = torch.cat([
+                state_tensor_cpy[:, :3],
+                euler_to_rotvec_tensor(state_tensor_cpy[:, 3:6], eps=1e-6),
+                state_tensor_cpy[:, 6:]
+            ], dim=1)
+
         for _ in range(step_num):
-            force = torch.zeros_like(action_tensor_current)
-            force[:,0] = action_tensor_current[:,0] * box_mass
-            force[:,1:] = self.pd_omega_control_per_axis_batch(
-                state_tensor_current[:, 9:12],  # omega
-                action_tensor_current[:, 1:],  # omega_cmd
-                torch.tensor(box_inertia_diag, device=action_tensor_current.device),  # J
-                self.kp.to(action_tensor_current.device),  # Kp
-                self.kd.to(action_tensor_current.device)   # Kd
-            ).to(action_tensor_current.device)
-            state_tensor_current, sensor_tensor = mj_forward_euler_wrapper(
-                state_tensor_current, force, self.robot
+            state_tensor_cpy, sensor_tensor = mj_forward_wrapper(
+                state_tensor_cpy, force, self.robot, self.ROTVEC
             )
-            # Potentially update action_tensor_current if actions change over time
+            # Potentially update action_tensor_cpy if actions change over time
             # For a constant action over dt, this is fine.
 
-        return state_tensor_current
+        state_tensor_next = state_tensor_cpy
+
+        if self.ROTVEC:
+            # Convert rotation vector back to euler angles
+            state_tensor_next = torch.cat([
+                state_tensor_next[:, :3],
+                rotvec_to_euler_tensor(state_tensor_cpy[:, 3:6], eps=1e-6),
+                state_tensor_next[:, 6:]
+            ], dim=1)
+
+        return state_tensor_next
     
     def pd_omega_control_per_axis_batch(self, omega, omega_cmd, J, Kp, Kd):
         """

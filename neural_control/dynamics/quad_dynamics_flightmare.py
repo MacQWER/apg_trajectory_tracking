@@ -170,7 +170,7 @@ class FlightmareDynamics(Dynamics):
         acceleration = self.linear_dynamics(force, attitude, velocity)
 
         position = (
-            position + 0.5 * dt * dt * acceleration + 0.5 * dt * velocity
+            position + 0.5 * dt * dt * acceleration + dt * velocity
         )
         velocity = velocity + dt * acceleration
 
