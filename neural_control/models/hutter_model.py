@@ -48,7 +48,7 @@ class Net(nn.Module):
         x = self.fc_out(x)
         return x
     
-class policy(nn.Module):
+class Policy(nn.Module):
     """
     Simple MLP with three hidden layers, based on RL work of Marco Hutter's
     group
@@ -61,7 +61,7 @@ class policy(nn.Module):
         in_size: number of input neurons (features)
         out_size: number of output neurons
         """
-        super(Net, self).__init__()
+        super(Policy, self).__init__()
         self.states_in = nn.Linear(state_dim, 64)
         self.conv_ref = nn.Conv1d(ref_dim, 20, kernel_size=3)
         # the size will be nr_channels * (1dlength - kernel_size + 1)

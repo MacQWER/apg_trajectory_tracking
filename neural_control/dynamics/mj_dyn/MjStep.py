@@ -66,6 +66,7 @@ class MjStepFunction_euler(torch.autograd.Function):
     def forward(ctx, state_tensor, action_tensor, robot):
         # print("type of state_tensor:", type(state_tensor))
         device = action_tensor.device
+        origin_shape = state_tensor.shape
         state = state_tensor.cpu().squeeze(0).numpy()
         action = action_tensor.cpu().squeeze(0).numpy()
 
@@ -94,7 +95,7 @@ class MjStepFunction_euler(torch.autograd.Function):
         state_next_euler_tensor[3:6] = quaternion_to_euler_xyz_safe_tensor(state_next_tensor[3:robot.model.nq], eps=1e-6)
         state_next_euler_tensor[6:] = state_next_tensor[robot.model.nq:]
 
-        return state_next_euler_tensor, sensordata_next_tensor
+        return state_next_euler_tensor.reshape(origin_shape), sensordata_next_tensor
 
     @staticmethod
     def backward(ctx, grad_state_next, grad_sensordata_next):

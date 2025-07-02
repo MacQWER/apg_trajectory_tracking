@@ -9,22 +9,34 @@ from neural_control.dataset import QuadDataset, state_preprocessing
 from train_base import TrainBase
 from neural_control.drone_loss import quad_mpc_loss
 from neural_control.dynamics.quad_dynamics_simple import SimpleDynamics
-from neural_control.dynamics.quad_dynamics_flightmare import (
-    FlightmareDynamics
-)
+# from neural_control.dynamics.quad_dynamics_flightmare import (
+#     FlightmareDynamics
+# )
+from neural_control.dynamics.box_dynamics import BoxDynamics
 from neural_control.dynamics.quad_dynamics_trained import LearntDynamics
-from neural_control.controllers.network_wrapper import NetworkWrapper
+from neural_control.controllers.network_wrapper import BoxNetWrapper
 from neural_control.environments.drone_env import QuadRotorEnvBase
 from evaluate_drone import QuadEvaluator
-from neural_control.models.hutter_model import Net
+from neural_control.models.hutter_model import Policy, Net
 from neural_control.models.rnn import LSTM_NEW
 try:
     from neural_control.flightmare import FlightmareWrapper
 except ModuleNotFoundError:
     pass
 
+def log_gradients(model):
+    total_norm = 0.0
+    for name, param in model.named_parameters():
+        if param.grad is not None:
+            param_norm = param.grad.data.norm(2)  # L2范数
+            # print(f"Gradient norm for {name}: {param_norm:.4f}")
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** 0.5
+    # print(f"Total gradient norm: {total_norm:.4f}")
+    return total_norm
 
-class TrainDrone(TrainBase):
+
+class TrainBox(TrainBase):
     """
     Train a controller for a quadrotor
     """
@@ -47,6 +59,8 @@ class TrainDrone(TrainBase):
             raise ValueError(
                 "sample in must be one of eval_env, train_env, real_flightmare"
             )
+        self.step = 0
+        self.max_norm = 800.0
 
     def initialize_model(
         self,
@@ -78,8 +92,8 @@ class TrainDrone(TrainBase):
             )
             in_state_size = self.state_data.normed_states.size()[1]
 
-            net_class = LSTM_NEW if self.train_mode == "LSTM" else Net
-            self.net = net_class(
+            # net_class = LSTM_NEW if self.train_mode == "LSTM" else Policy
+            self.net = Net(
                 in_state_size,
                 self.horizon,
                 self.ref_dim,
@@ -195,16 +209,26 @@ class TrainDrone(TrainBase):
 
         # Backprop
         loss.backward()
-        self.writer.add_scalar('loss/training', loss)
+
+        self.writer.add_scalar('loss/training', loss, self.step)
+        # torch.nn.utils.clip_grad_norm_(self.net.parameters(), max_norm=self.max_norm)
+        # log gradients
+        total_norm = log_gradients(self.net)
+        # print("Total gradient norm:", total_norm)
+        self.writer.add_scalar("grad/total_norm", total_norm, self.step)
+        # total_grad_norm = log_gradients(self.net)
+        self.step += 1
+        # self.writer.add_scalar("grad/total_norm", total_grad_norm, self.step)
         # for name, param in self.net.named_parameters():
         #     if param.grad is not None:
         #         self.writer.add_histogram(name + ".grad", param.grad)
+
         self.optimizer_controller.step()
         return loss
 
     def evaluate_model(self, epoch):
         # EVALUATE
-        controller = NetworkWrapper(self.net, self.state_data, **self.config)
+        controller = BoxNetWrapper(self.net, self.state_data, **self.config)
 
         evaluator = QuadEvaluator(controller, self.eval_env, **self.config)
         # run with mpc to collect data
@@ -245,13 +269,13 @@ def train_control(base_model, config):
     modified_params = config["modified_params"]
     # TODO: might be problematic
     print(modified_params)
-    train_dynamics = FlightmareDynamics(modified_params=modified_params)
-    eval_dynamics = FlightmareDynamics(modified_params=modified_params)
+    train_dynamics = BoxDynamics(modified_params=modified_params)
+    eval_dynamics = BoxDynamics(modified_params=modified_params)
 
     # make sure that also the self play samples are collected in same env
     config["sample_in"] = "train_env"
 
-    trainer = TrainDrone(train_dynamics, eval_dynamics, config)
+    trainer = TrainBox(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
 
     trainer.run_control(config)
@@ -269,9 +293,9 @@ def train_dynamics(base_model, config):
 
     # train environment is learnt
     train_dynamics = LearntDynamics()
-    eval_dynamics = FlightmareDynamics(modified_params)
+    eval_dynamics = BoxDynamics(modified_params)
 
-    trainer = TrainDrone(train_dynamics, eval_dynamics, config)
+    trainer = TrainBox(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
 
     # RUN
@@ -289,10 +313,10 @@ def train_sampling_finetune(base_model, config):
     config["sample_in"] = "eval_env"
 
     # train environment is learnt
-    train_dynamics = FlightmareDynamics()
-    eval_dynamics = FlightmareDynamics(modified_params=modified_params)
+    train_dynamics = BoxDynamics()
+    eval_dynamics = BoxDynamics(modified_params=modified_params)
 
-    trainer = TrainDrone(train_dynamics, eval_dynamics, config)
+    trainer = TrainBox(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
 
     # RUN
@@ -301,7 +325,7 @@ def train_sampling_finetune(base_model, config):
 
 if __name__ == "__main__":
     # LOAD CONFIG
-    with open("configs/quad_config.json", "r") as infile:
+    with open("configs/box_config.json", "r") as infile:
         config = json.load(infile)
 
     # mod_params = {"mass": 1}
@@ -312,12 +336,14 @@ if __name__ == "__main__":
     # config["thresh_div_start"] = 1
     # config["thresh_stable_start"] = 1.5
 
-    config["save_name"] = "lstm"
+    config["save_name"] = "Box"
 
     # config["nr_epochs"] = 400
 
     # TRAIN
+    start_time = time.time()
     train_control(baseline_model, config)
+    print("Training finished in", time.time() - start_time, "seconds")
     # train_dynamics(baseline_model, config)
     # train_sampling_finetune(baseline_model, config)
     # FINE TUNING parameters:

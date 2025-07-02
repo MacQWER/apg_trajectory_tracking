@@ -292,6 +292,7 @@ class TrainBase:
         try:
             first_epoch_with_this_vel = 0
             for epoch in range(config["nr_epochs"]):
+                start_time = time.time()
                 _ = self.evaluate_model(epoch)
 
                 if curriculum:
@@ -308,7 +309,9 @@ class TrainBase:
                         self.current_score = 0 if self.suc_up_down == 1 else np.inf
 
                 print(f"\nEpoch {epoch}")
+                
                 self.run_epoch(train="controller", epoch=epoch)
+                print("Epoch time:", round(time.time() - start_time, 2), "s")
 
                 if sampling_based_finetune:
                     print(
