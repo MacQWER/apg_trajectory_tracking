@@ -59,7 +59,7 @@ class BoxEvaluator():
         BOX_XML_PATH = os.path.join(CURRENT_DIR, '..', 'neural_control', 'dynamics', 'source', 'box', 'box_6d.xml')
         BOX_XML_PATH = os.path.normpath(BOX_XML_PATH)
         self.mj_model = mujoco.MjModel.from_xml_path(BOX_XML_PATH)
-        self.mj_data = mujoco.MjData(self.model)
+        self.mj_data = mujoco.MjData(self.mj_model)
 
         if hasattr(self.controller.net, "reset_hidden_state"):
             # if it's an lstm based model, reset the hidden state
