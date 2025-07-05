@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import mujoco
 import mujoco.viewer
+import colorsys
 
 from neural_control.environments.drone_env import QuadRotorEnvBase
 from neural_control.environments.rendering import animate_quad
@@ -26,6 +27,65 @@ except ModuleNotFoundError:
 
 ROLL_OUT = 1
 
+def mj_view(box_dynamics: BoxDynamics, ref_traj: np.ndarray, drone_traj: np.ndarray, actions: np.array, dt=0.1):
+    """
+    Visualize the trajectory in Mujoco viewer
+    """
+    # Create a viewer
+    with mujoco.viewer.launch_passive(box_dynamics.model, box_dynamics.data) as viewer:
+        viewer.sync()
+        with viewer.lock():
+            viewer.user_scn.ngeom = 0
+            scn = viewer.user_scn
+            # scn.flags[mujoco.mjtRndFlag.mjRND_WIREFRAME] = 1
+
+            N = len(ref_traj)
+            for i in range(ref_traj.shape[0]):
+                pos = ref_traj[i][:3]
+                hue = i / (N - 1) if N > 1 else 0
+                r, g, b = colorsys.hsv_to_rgb(hue, 1.0, 1.0)
+                rgba = [r, g, b, 1.0]
+        
+                mujoco.mjv_initGeom(
+                    scn.geoms[i],
+                    type=mujoco.mjtGeom.mjGEOM_SPHERE,
+                    size=[0.01, 0, 0],
+                    pos=pos,
+                    mat=np.eye(3).flatten(),
+                    rgba=rgba
+                )
+            scn.ngeom = N
+            viewer.sync()
+
+        drone_traj_idx = 0
+        device = torch.device("cpu")  # Use CPU for simplicity
+        while viewer.is_running() and drone_traj_idx < drone_traj.shape[0]:
+            step_start = time.time()
+
+            # action_tensor = torch.tensor(actions[drone_traj_idx][0], dtype=torch.double, device=device)
+            state_tensor = torch.tensor(drone_traj[drone_traj_idx], dtype=torch.double, device=device)
+            next_state_tensor = box_dynamics(state_tensor.unsqueeze(0), torch.zeros((1,4), dtype=torch.double, device=device), dt=dt)
+
+            viewer.cam.lookat[:] = box_dynamics.data.body("box").xpos  # 这里 "box" 是你 drone 的 body 名称
+            viewer.cam.distance = 1.5  # 相机离物体多远，根据场景调整
+            viewer.cam.azimuth = 90   # 水平方向角度
+            viewer.cam.elevation = -20  # 垂直方向角度
+
+            drone_traj_idx += 1
+            
+            viewer.sync()
+            
+            # 以 dt 作为周期控制步长（若不足则休眠补足）
+            elapsed = time.time() - step_start
+            time_until_next_step = dt - elapsed
+            if time_until_next_step > 0:
+                time.sleep(time_until_next_step)
+    
+    print("Viewer closed.")
+        
+   
+    
+
 # Use cuda if available
 device = "cpu"  # torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
@@ -40,7 +100,7 @@ class BoxEvaluator():
         render=0,
         dt=0.05,
         test_time=0,
-        speed_factor=.6,
+        speed_factor=.2,
         train_mode="concurrent",
         **kwargs
     ):
@@ -405,7 +465,7 @@ if __name__ == "__main__":
     params["render"] = 0
     # params["dt"] = .05
     # params["max_drone_dist"] = 1
-    params["speed_factor"] = .4
+    params["speed_factor"] = .1
     modified_params = {}  # {"mass": 1}
     # {"rotational_drag": np.array([.1, .1, .1])}
     # {"mass": 1}
@@ -454,10 +514,10 @@ if __name__ == "__main__":
     if args.eval > 0:
         # run_mpc_analysis(evaluator, system="quad")
         evaluator.run_eval(args.ref, nr_test=args.eval, **traj_args)
-        exit()
+        # exit()
 
     # run one trajectory
-    reference_traj, drone_traj, divergences, _ = evaluator.follow_trajectory(
+    reference_traj, drone_traj, divergences, actions = evaluator.follow_trajectory(
         args.ref, max_nr_steps=2000, use_mpc_every=1000, **traj_args
     )
     # Save trajectories
@@ -472,13 +532,20 @@ if __name__ == "__main__":
             drone_traj
         )
     print("Average divergence", np.mean(divergences))
+    print("speed factor: ", params["speed_factor"])
+    print("thresh_div: ", traj_args["thresh_div"])
+    print("thresh_stable: ", traj_args["thresh_stable"])
+    print("length of reference trajectory: ", reference_traj.shape)
+    print("shape of drone trajectory: ", drone_traj.shape)
+    print("shape of actions: ", actions.shape)
+    print("dt: ", params["dt"])
     if args.animate:
-        animate_quad(
-            reference_traj,
-            [drone_traj],
-            # uncomment to save video
-            # savefile=os.path.join(model_path, 'video.mp4')
-        )
+        box_dynamics = BoxDynamics(modified_params=modified_params)
+        mj_view(box_dynamics=box_dynamics, 
+                ref_traj=reference_traj, 
+                drone_traj=drone_traj, 
+                actions=actions, 
+                dt=params["dt"])
 
     if args.unity:
         evaluator.eval_env.env.disconnectUnity()

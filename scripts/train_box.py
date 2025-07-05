@@ -242,7 +242,7 @@ class TrainBox(TrainBase):
         self.sample_new_data(epoch)
 
         # increase threshold
-        if epoch % 5 == 0 and self.config["thresh_div"] < self.thresh_div_end:
+        if (epoch+1) % 20 == 0 and self.config["thresh_div"] < self.thresh_div_end:
             self.config["thresh_div"] += .05
             print(
                 "Curriculum learning: increase divergence threshold",
@@ -278,7 +278,7 @@ def train_control(base_model, config):
     trainer = TrainBox(train_dynamics, eval_dynamics, config)
     trainer.initialize_model(base_model, modified_params=modified_params)
 
-    trainer.run_control(config)
+    trainer.run_control(config, curriculum=0)
 
 
 def train_dynamics(base_model, config):
@@ -337,7 +337,6 @@ if __name__ == "__main__":
     # config["thresh_stable_start"] = 1.5
 
     config["save_name"] = "Box"
-
     # config["nr_epochs"] = 400
 
     # TRAIN

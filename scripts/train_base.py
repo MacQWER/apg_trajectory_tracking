@@ -287,6 +287,7 @@ class TrainBase:
         self, config, sampling_based_finetune=False, curriculum=1
     ):
         if curriculum:
+            print("Curriculum learning enabled")
             self.config["speed_factor"] = 0.2
             successes = []
         try:
@@ -300,10 +301,11 @@ class TrainBase:
                     successes.append(self.results_dict["mean_success"][-1])
                     print(successes, "speed", round(self.config["speed_factor"]
                         , 2), "thresh", round(self.config["thresh_div"], 2))
-                    if ( (len(successes) > 5 and np.all(np.array(successes[-5:]) > current_possible_steps)) or ((epoch - first_epoch_with_this_vel) > 100) ) and self.config["speed_factor"] < 0.4:
+                    # if ( (len(successes) > 5 and np.all(np.array(successes[-5:]) > current_possible_steps)) or ((epoch - first_epoch_with_this_vel) > 100) ) and self.config["speed_factor"] < 0.4:
+                    if ( (len(successes) > 5 and np.all(np.array(successes[-5:]) > current_possible_steps)) ) and self.config["speed_factor"] < 0.4:
                         print(" -------------- increase speed --------- ")
                         self.config["speed_factor"] += 0.1
-                        self.config["thresh_div"] = 0.1
+                        self.config["thresh_div"] *= 0.5
                         successes = []
                         first_epoch_with_this_vel = epoch + 1
                         self.current_score = 0 if self.suc_up_down == 1 else np.inf
