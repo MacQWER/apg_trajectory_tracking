@@ -9,6 +9,7 @@ import os
 import mujoco
 import mujoco.viewer
 import time
+from torch.autograd import gradcheck
 
 from neural_control.drone_loss import quad_mpc_loss
 
@@ -85,3 +86,23 @@ if __name__ == "__main__":
     print("Flightmare Dynamics Gradient: \n", grad_flight)
     print("Box Dynamics States: \n", states_box)
     print("Flightmare Dynamics States: \n", states_flight)
+
+    def check_dynamics_gradients(state_tensor, action_tensor):
+    # dt is fixed for the gradient check
+        dt = 0.02 
+        return box_dynamics(state_tensor, action_tensor, dt)
+    
+    batch_size = 1
+    dummy_state  = torch.randn(batch_size, 12, dtype=torch.double, requires_grad=True)
+    dummy_action = torch.randn(batch_size,  4, dtype=torch.double, requires_grad=True)
+    print()
+    print("Performing gradient check for BoxDynamics...")
+    try:
+        # `eps` is the step size for numerical approximation
+        # `atol` is the absolute tolerance
+        # `rtol` is the relative tolerance
+        test = gradcheck(check_dynamics_gradients, (dummy_state, dummy_action), eps=2e-2, atol=1e-1, rtol=1e-1)
+        print(f"Gradient check passed: {test}")
+    except Exception as e:
+        print(f"Gradient check failed: {e}")
+        print("This might indicate an issue in the backward pass of MockMjForwardWrapper or other differentiable operations.")
